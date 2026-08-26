@@ -196,3 +196,32 @@ async def test_granting_twice_is_idempotent_and_writes_one_audit_row(
     grants = [entry for entry in audit.json() if entry["event"] == "tool_grant.granted"]
     assert len(grants) == 1
     assert grants[0]["payload"]["tools"] == ["read_project"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "reason"),
+    [
+        ("", "empty or non-string"),
+        ("   ", "empty or non-string"),
+        ("a", "malformed identifier"),
+        ("9tool", "malformed identifier"),
+        ("Read_Project!", "malformed identifier"),
+    ],
+)
+async def test_a_malformed_tool_name_is_rejected_with_a_reason(
+    client: AsyncClient, abc: OrgFixture, tool: str, reason: str
+) -> None:
+    response = await client.post(
+        "/skills",
+        headers=abc.owner_headers,
+        json={
+            "name": "Probe malformed",
+            "department": "operations",
+            "prompt_body": "p",
+            "requested_tools": [tool],
+        },
+    )
+    assert response.status_code == 422, response.text
+    error = response.json()["error"]
+    assert error["code"] == "FORBIDDEN_TOOL_PATTERN"
+    assert error["detail"]["reason"] == reason
