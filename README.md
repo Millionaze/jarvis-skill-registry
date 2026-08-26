@@ -348,35 +348,8 @@ curl -s -X POST $API/skills -H "Authorization: Bearer $ABC_OWNER" -H 'Content-Ty
 # "VALIDATION_ERROR"
 ```
 
-### 15. Disable, and it leaves the runtime immediately
 
-```bash
-curl -s -X POST $API/skills/$SKILL_ID/disable -H "Authorization: Bearer $ABC_OWNER" | jq .status
-# "disabled"
-
-curl -s "$API/skills/active" -H "Authorization: Bearer $ABC_OWNER" | jq
-# []
-```
-
-### 16. The audit trail
-
-Every entry carries the organization, the actor, the event and the exact version
-number.
-
-```bash
-curl -s $API/audit -H "Authorization: Bearer $ABC_OWNER" \
-  | jq -r '.[] | "\(.created_at)  \(.event)  v\(.version_number // "-")  actor=\(.actor_user_id)"'
-```
-
-```
-2026-08-26T14:31:07Z  skill.disabled           v-   actor=1166b976-…
-2026-08-26T14:31:07Z  skill_version.disabled   v2   actor=1166b976-…
-2026-08-26T14:31:05Z  skill_version.activated  v2   actor=1166b976-…
-2026-08-26T14:31:05Z  skill_version.superseded v1   actor=1166b976-…
-…
-```
-
-### 17. The database refuses to mutate an active version, even from psql
+### 15. The database refuses to mutate an active version, even from psql
 
 The strongest guarantee, reached by going around the application entirely:
 
@@ -402,6 +375,34 @@ docker compose exec -e PGPASSWORD=dev-only-not-a-secret db \
 docker compose exec -e PGPASSWORD=dev-only-not-a-secret db \
   psql -U jarvis_owner -d jarvis -c "DELETE FROM audit_log;"
 # ERROR:  audit_log is append-only; DELETE is not permitted
+```
+
+### 16. Disable, and it leaves the runtime immediately
+
+```bash
+curl -s -X POST $API/skills/$SKILL_ID/disable -H "Authorization: Bearer $ABC_OWNER" | jq .status
+# "disabled"
+
+curl -s "$API/skills/active" -H "Authorization: Bearer $ABC_OWNER" | jq
+# []
+```
+
+### 17. The audit trail
+
+Every entry carries the organization, the actor, the event and the exact version
+number.
+
+```bash
+curl -s $API/audit -H "Authorization: Bearer $ABC_OWNER" \
+  | jq -r '.[] | "\(.created_at)  \(.event)  v\(.version_number // "-")  actor=\(.actor_user_id)"'
+```
+
+```
+2026-08-26T14:31:07Z  skill.disabled           v-   actor=1166b976-…
+2026-08-26T14:31:07Z  skill_version.disabled   v2   actor=1166b976-…
+2026-08-26T14:31:05Z  skill_version.activated  v2   actor=1166b976-…
+2026-08-26T14:31:05Z  skill_version.superseded v1   actor=1166b976-…
+…
 ```
 
 ---
