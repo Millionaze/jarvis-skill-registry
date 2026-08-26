@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import SkillStatus, VersionStatus
-from app.db.base import Base, created_at_column, uuid_pk
+from app.db.base import Base, created_at_column, utcnow, uuid_pk
 
 
 class Skill(Base):
@@ -49,7 +49,11 @@ class Skill(Base):
     )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        server_default=func.now(),
+        onupdate=utcnow,
     )
 
     versions: Mapped[list["SkillVersion"]] = relationship(

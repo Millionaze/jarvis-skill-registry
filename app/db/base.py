@@ -8,7 +8,7 @@ stable.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
@@ -31,7 +31,17 @@ def uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 def created_at_column() -> Mapped[datetime]:
+    """Timestamp with both a Python-side and a server-side default.
+
+    The Python default keeps the attribute populated after an async flush (no
+    lazy refresh, no MissingGreenlet); the server default keeps raw SQL inserts
+    - including those in migrations and tests - well-formed.
+    """
     return mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=utcnow, server_default=func.now()
     )
