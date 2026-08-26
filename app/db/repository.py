@@ -25,7 +25,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.errors import ErrorCode, ResourceNotFoundError
 from app.db.base import Base
-from app.models.skill import Skill, SkillVersion, ToolGrant
+from app.models.skill import Skill, SkillVersion
 from app.models.user import User
 
 ModelT = TypeVar("ModelT", bound=Base)
@@ -98,12 +98,6 @@ class ScopedRepository:
 
     async def commit(self) -> None:
         await self._session.commit()
-
-    async def rollback(self) -> None:
-        await self._session.rollback()
-
-    async def refresh(self, instance: ModelT, attribute_names: list[str] | None = None) -> None:
-        await self._session.refresh(instance, attribute_names=attribute_names)
 
 
 class SkillRepository(ScopedRepository):
@@ -179,15 +173,6 @@ class SkillRepository(ScopedRepository):
             stmt = stmt.where(Skill.department == department)
         rows = (await self._session.execute(stmt)).all()
         return [(row[0], row[1]) for row in rows]
-
-    async def granted_tools(self, skill_version_id: uuid.UUID) -> list[str]:
-        stmt = (
-            self.select(ToolGrant)
-            .where(ToolGrant.skill_version_id == skill_version_id)
-            .where(ToolGrant.granted.is_(True))
-            .order_by(ToolGrant.tool_name)
-        )
-        return [grant.tool_name for grant in await self.scalars(stmt)]
 
 
 class UnscopedAuthRepository:

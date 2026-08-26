@@ -56,14 +56,9 @@ class SkillService:
             )
 
     async def _require_skill(self, skill_id: uuid.UUID) -> Skill:
-        skill = await self._repo.get(Skill, skill_id)
-        if skill is None:
-            raise ResourceNotFoundError(
-                "Skill not found.",
-                code=ErrorCode.SKILL_NOT_FOUND,
-                detail={"skill_id": str(skill_id)},
-            )
-        return skill
+        return await self._repo.require(
+            Skill, skill_id, code=ErrorCode.SKILL_NOT_FOUND, message="Skill not found."
+        )
 
     async def _lock_skill(self, skill_id: uuid.UUID) -> Skill:
         skill = await self._repo.lock_skill(skill_id)
@@ -313,6 +308,3 @@ class SkillService:
         self._audit.record(AuditEvent.SKILL_DISABLED, skill=skill, payload={"name": skill.name})
         await self._repo.commit()
         return await self.get_skill_detail(skill_id)
-
-    async def granted_tools_for(self, version: SkillVersion) -> list[str]:
-        return await self._repo.granted_tools(version.id)

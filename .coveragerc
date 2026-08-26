@@ -1,5 +1,8 @@
 [run]
 source = app
+# SQLAlchemy's asyncio layer runs call stacks inside greenlets; without this,
+# coverage silently under-reports async code paths.
+concurrency = greenlet
 omit =
     app/seed.py
     */__init__.py
