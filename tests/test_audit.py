@@ -149,3 +149,71 @@ async def test_the_append_only_trigger_is_installed(session: AsyncSession) -> No
     names = {row[0] for row in triggers}
     assert "trg_audit_log_append_only" in names
     assert "trg_skill_versions_immutable_active" in names
+
+
+async def test_the_application_role_cannot_truncate_the_audit_log(
+    client: AsyncClient, abc: OrgFixture, session: AsyncSession
+) -> None:
+    """TRUNCATE is not granted to the app role, so the network-facing path is shut."""
+    await flows.create_reviewed_and_active_skill(client, abc)
+
+    with pytest.raises(DBAPIError) as raised:
+        async with session.begin_nested():
+            await session.execute(text("TRUNCATE audit_log"))
+
+    assert "permission denied" in str(raised.value).lower()
+
+
+async def test_the_audit_log_cannot_be_truncated_even_by_the_schema_owner() -> None:
+    """Regression: row triggers do not fire on TRUNCATE.
+
+    Found by the pre-submission audit. The application role could never TRUNCATE
+    (the privilege is revoked - see the test above), but the schema OWNER could
+    empty the table in one statement, so "append-only" held for UPDATE and DELETE
+    and not for TRUNCATE. trg_audit_log_no_truncate closes it.
+
+    Proved on a dedicated owner connection, because the owner is the only role for
+    which the gap existed. This test deliberately takes no `session` fixture:
+    TRUNCATE needs ACCESS EXCLUSIVE, so an open test transaction holding ACCESS
+    SHARE on audit_log would block it. lock_timeout is set as a backstop so a
+    future change fails this test fast instead of hanging the suite.
+    """
+    import os
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    owner_engine = create_async_engine(
+        os.environ["TEST_MIGRATION_DATABASE_URL"], poolclass=NullPool
+    )
+    try:
+        async with owner_engine.connect() as conn:
+            transaction = await conn.begin()
+            try:
+                await conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+
+                with pytest.raises(DBAPIError) as raised:
+                    await conn.execute(text("TRUNCATE audit_log"))
+
+                message = str(raised.value).lower()
+                assert "append-only" in message, message
+                assert "truncate" in message, message
+                assert "lock timeout" not in message, "blocked on a lock, not the trigger"
+            finally:
+                await transaction.rollback()
+    finally:
+        await owner_engine.dispose()
+
+
+async def test_the_truncate_guard_is_a_statement_level_trigger(session: AsyncSession) -> None:
+    """tgtype bit 32 = fires on TRUNCATE; bit 1 unset = STATEMENT level."""
+    rows = await session.execute(
+        text(
+            "SELECT tgname, (tgtype::int & 32) > 0 AS on_truncate, (tgtype::int & 1) > 0 AS row_level "
+            "FROM pg_trigger WHERE NOT tgisinternal AND tgrelid = 'audit_log'::regclass"
+        )
+    )
+    triggers = {r.tgname: (r.on_truncate, r.row_level) for r in rows}
+
+    assert triggers["trg_audit_log_append_only"] == (False, True)
+    assert triggers["trg_audit_log_no_truncate"] == (True, False)

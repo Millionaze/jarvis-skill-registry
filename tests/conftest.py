@@ -61,16 +61,34 @@ _HASHED_TEST_PASSWORD = hash_password(TEST_PASSWORD)
 
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database() -> None:
-    """Fresh schema for the session: downgrade to base, then migrate to head."""
+    """Fresh schema for the session: downgrade to base, then migrate to head.
+
+    The subprocess timeout is deliberate. Dropping the triggers and tables needs
+    ACCESS EXCLUSIVE locks, so a connection left open on the test database - an
+    abandoned container, a stray psql - would otherwise make this fixture block
+    forever and the suite would hang with no output at all rather than fail.
+    """
     env = {**os.environ, "MIGRATION_DATABASE_URL": TEST_MIGRATION_DATABASE_URL}
     for args in (["downgrade", "base"], ["upgrade", "head"]):
-        subprocess.run(
-            [sys.executable, "-m", "alembic", *args],
-            cwd=ROOT,
-            env=env,
-            check=True,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "alembic", *args],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"`alembic {' '.join(args)}` timed out against the test database. "
+                "Something is holding a lock on it - check for an abandoned "
+                "container or psql session (pg_stat_activity)."
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"`alembic {' '.join(args)}` failed:\n{exc.stderr.decode(errors='replace')}"
+            ) from exc
 
 
 @pytest_asyncio.fixture

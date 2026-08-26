@@ -22,8 +22,18 @@ async def test_health_is_open(client: AsyncClient) -> None:
 
 
 async def test_the_application_lifespan_starts_and_stops_cleanly() -> None:
-    async with lifespan(create_app()):
-        pass
+    """Startup must resolve settings (proving JWT_SECRET is present) and shut down
+    without leaving an engine behind."""
+    from app.core.config import get_settings
+    from app.db import session as session_module
+
+    application = create_app()
+    async with lifespan(application):
+        settings = get_settings()
+        assert settings.jwt_secret, "startup must fail loudly rather than run unsigned"
+        assert settings.database_url.startswith("postgresql+asyncpg://")
+
+    assert session_module._engine is None, "lifespan must dispose the engine on shutdown"
 
 
 async def test_updating_skill_metadata_records_the_change(
@@ -146,3 +156,43 @@ async def test_the_repository_overwrites_any_organization_id_it_is_handed(
     await repo.flush()
 
     assert skill.organization_id == abc.id
+
+
+async def test_a_lost_race_on_a_duplicate_skill_name_is_a_409_not_a_500(
+    client: AsyncClient, abc: OrgFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: two concurrent creates can both pass the pre-check.
+
+    Found by the pre-submission audit - concurrent POST /skills with the same name
+    returned 500 INTERNAL_ERROR because the resulting IntegrityError was unhandled.
+    The pre-check is only a fast path; uq_skills_organization_id_name is the
+    authority, and losing that race is a conflict, not a server error.
+
+    The race window is reproduced deterministically by making the pre-check miss,
+    which is exactly what the losing request observes.
+    """
+    from app.db.repository import SkillRepository
+
+    body = {
+        "name": "Contended Name",
+        "department": "operations",
+        "prompt_body": "p",
+        "requested_tools": [],
+    }
+    first = await client.post("/skills", headers=abc.owner_headers, json=body)
+    assert first.status_code == 201
+
+    async def _pretend_the_name_is_free(self, name: str):  # noqa: ANN001, ANN202
+        return None
+
+    monkeypatch.setattr(SkillRepository, "find_skill_by_name", _pretend_the_name_is_free)
+
+    second = await client.post("/skills", headers=abc.owner_headers, json=body)
+    assert second.status_code == 409, second.text
+    assert second.json()["error"]["code"] == "SKILL_NAME_CONFLICT"
+    assert second.json()["error"]["detail"]["name"] == "Contended Name"
+
+    # The losing request left nothing behind and the session still works.
+    monkeypatch.undo()
+    listing = await client.get("/skills", headers=abc.owner_headers)
+    assert [row["name"] for row in listing.json()] == ["Contended Name"]
