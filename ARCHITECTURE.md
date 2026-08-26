@@ -4,6 +4,51 @@ Short notes on the choices that shaped this service, and what each one costs.
 
 ---
 
+## The lifecycle at a glance
+
+Where the immutability boundary sits is the whole design, so it is worth one
+picture. Everything left of the dashed line can still change; everything right
+of it is frozen and can only be superseded.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> Draft: POST /skills (creates version 1)
+
+    state "version N — still editable" as Mutable {
+        Draft --> Reviewed: POST .../review
+    }
+
+    Reviewed --> Active: POST .../activate — owner only, never automatic
+
+    state "version N — FROZEN" as Frozen {
+        Active --> Superseded: a newer version is activated
+        Active --> Disabled: POST /skills/{id}/disable
+    }
+
+    Active --> Draft: editing an active skill creates version N+1, never a mutation
+
+    note right of Frozen
+        The immutability boundary.
+        prompt_body, requested_tools, content_hash and
+        version_number cannot change once status = active.
+        Enforced three times: no mutating route,
+        the before_update guard, and
+        trg_skill_versions_immutable_active.
+        These two are the only legal exits from Active.
+    end note
+```
+
+At most one version per skill may sit in `Active` at a time — that is not a
+convention the service maintains, it is
+`uq_skill_versions_one_active_per_skill`, a partial unique index the database
+enforces. Activation of a different version supersedes the incumbent and
+promotes the successor inside a single transaction, serialised by a row lock on
+the skill.
+
+---
+
 ## Why PostgreSQL
 
 The invariants this system exists to protect are *data* invariants, not
