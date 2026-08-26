@@ -3,10 +3,14 @@ source = app
 # SQLAlchemy's asyncio layer runs call stacks inside greenlets; without this,
 # coverage silently under-reports async code paths.
 concurrency = greenlet
-omit =
-    app/seed.py
-    */__init__.py
+# Nothing is omitted. app/seed.py is part of "docker compose up works with zero
+# manual steps", so it is covered by tests/test_seed.py like everything else.
 
 [report]
 show_missing = True
 skip_covered = False
+exclude_also =
+    # The CLI guard cannot be reached by an import-based test runner. It is not
+    # untested: scripts/entrypoint.sh runs `python -m app.seed` on every
+    # container start, which is what the fresh-start verification exercises.
+    if __name__ == .__main__.:
