@@ -18,7 +18,8 @@ class ErrorCode:
 
     AUTH_REQUIRED = "AUTH_REQUIRED"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
-    INVALID_TOKEN = "INVALID_TOKEN"
+    # Suppressing S105 here: an error code, not a credential - the value is its own name.
+    INVALID_TOKEN = "INVALID_TOKEN"  # noqa: S105
 
     SKILL_NOT_FOUND = "SKILL_NOT_FOUND"
     SKILL_VERSION_NOT_FOUND = "SKILL_VERSION_NOT_FOUND"

@@ -1,0 +1,50 @@
+# Tooling configuration only. Dependencies stay in requirements.txt so the
+# Dockerfile can install them in a cacheable layer before the source is copied.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # comprehensions
+    "UP",   # pyupgrade
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+    "ASYNC",# async correctness
+    "S",    # bandit security checks
+    "SLF",  # private-member access across objects
+]
+ignore = [
+    "E501",  # line length is handled by the formatter, not the linter
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately assert on hard-coded fixture credentials and construct
+# adversarial SQL strings; both are the point of the test, not a finding.
+"tests/*" = ["S101", "S105", "S106", "S608"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+plugins = []
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+# Alembic's generated module surface is untyped; the migrations themselves are
+# checked by actually running them in the test suite.
+module = "alembic.*"
+ignore_errors = true

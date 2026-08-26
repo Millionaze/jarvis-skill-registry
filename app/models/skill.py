@@ -56,7 +56,7 @@ class Skill(Base):
         onupdate=utcnow,
     )
 
-    versions: Mapped[list["SkillVersion"]] = relationship(
+    versions: Mapped[list[SkillVersion]] = relationship(
         back_populates="skill",
         order_by="SkillVersion.version_number",
         cascade="all, delete-orphan",
@@ -122,8 +122,8 @@ class SkillVersion(Base):
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
 
-    skill: Mapped["Skill"] = relationship(back_populates="versions")
-    tool_grants: Mapped[list["ToolGrant"]] = relationship(
+    skill: Mapped[Skill] = relationship(back_populates="versions")
+    tool_grants: Mapped[list[ToolGrant]] = relationship(
         back_populates="skill_version", cascade="all, delete-orphan", order_by="ToolGrant.tool_name"
     )
 
@@ -163,4 +163,4 @@ class ToolGrant(Base):
     )
     granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    skill_version: Mapped["SkillVersion"] = relationship(back_populates="tool_grants")
+    skill_version: Mapped[SkillVersion] = relationship(back_populates="tool_grants")

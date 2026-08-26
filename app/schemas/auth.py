@@ -14,7 +14,8 @@ class LoginRequest(StrictModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    # Suppressing S105 here: the RFC 6750 token *type*, not a token value.
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int
 
 
@@ -27,4 +28,4 @@ class CurrentUserResponse(BaseModel):
     organization_id: uuid.UUID
 
 
-__all__ = ["LoginRequest", "TokenResponse", "CurrentUserResponse", "EmailStr"]
+__all__ = ["CurrentUserResponse", "EmailStr", "LoginRequest", "TokenResponse"]

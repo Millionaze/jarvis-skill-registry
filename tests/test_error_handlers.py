@@ -11,10 +11,9 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-
-from app.api.errors import register_exception_handlers
 from sqlalchemy.exc import IntegrityError
 
+from app.api.errors import register_exception_handlers
 from app.core.errors import DomainError, ErrorCode, ImmutableVersionError
 from app.db.session import dispose_engine, get_engine, get_session, get_sessionmaker
 

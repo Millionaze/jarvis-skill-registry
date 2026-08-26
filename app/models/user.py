@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import UserRole
 from app.db.base import Base, created_at_column, uuid_pk
+
+if TYPE_CHECKING:  # avoids a circular import at runtime; SQLAlchemy resolves by name
+    from app.models.organization import Organization
 
 
 class User(Base):
@@ -29,7 +33,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = created_at_column()
 
-    organization: Mapped["Organization"] = relationship(back_populates="users")  # noqa: F821
+    organization: Mapped[Organization] = relationship(back_populates="users")
 
     @property
     def is_owner(self) -> bool:

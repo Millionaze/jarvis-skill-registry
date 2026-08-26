@@ -33,7 +33,11 @@ async def test_the_application_lifespan_starts_and_stops_cleanly() -> None:
         assert settings.jwt_secret, "startup must fail loudly rather than run unsigned"
         assert settings.database_url.startswith("postgresql+asyncpg://")
 
-    assert session_module._engine is None, "lifespan must dispose the engine on shutdown"
+    # Suppressing SLF001 here: reaching into module state is the assertion, not a shortcut -
+    # "the engine was disposed" is only observable there.
+    assert session_module._engine is None, (  # noqa: SLF001
+        "lifespan must dispose the engine on shutdown"
+    )
 
 
 async def test_updating_skill_metadata_records_the_change(
@@ -182,7 +186,7 @@ async def test_a_lost_race_on_a_duplicate_skill_name_is_a_409_not_a_500(
     first = await client.post("/skills", headers=abc.owner_headers, json=body)
     assert first.status_code == 201
 
-    async def _pretend_the_name_is_free(self, name: str):  # noqa: ANN001, ANN202
+    async def _pretend_the_name_is_free(self, name: str):
         return None
 
     monkeypatch.setattr(SkillRepository, "find_skill_by_name", _pretend_the_name_is_free)
@@ -210,7 +214,7 @@ async def test_an_unrelated_constraint_violation_is_not_mislabelled_as_a_name_co
 
     from app.db.repository import SkillRepository
 
-    async def _raise_a_different_constraint(self) -> None:  # noqa: ANN001
+    async def _raise_a_different_constraint(self) -> None:
         raise IntegrityError(
             "INSERT INTO skills ...",
             {},

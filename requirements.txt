@@ -11,6 +11,10 @@ passlib==1.7.4
 # passlib 1.7.4 reads bcrypt.__about__, removed in bcrypt>=4.1 - pin to a compatible release
 bcrypt==4.0.1
 
+# --- lint / type checking ---
+ruff==0.8.4
+mypy==1.14.0
+
 # --- tests (kept in the image so `docker compose run --rm api pytest` needs zero setup) ---
 pytest==8.3.4
 pytest-asyncio==0.25.0

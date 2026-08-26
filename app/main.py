@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-import app.models  # noqa: F401  - registers mappers and the immutability guard
+from app import models as _models  # noqa: F401  - registers mappers and the guard
 from app.api.errors import register_exception_handlers
 from app.api.routers import audit, auth, skills
 from app.core.config import get_settings

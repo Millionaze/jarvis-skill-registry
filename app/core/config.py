@@ -30,7 +30,11 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
 
     # --- fixtures ---------------------------------------------------------
-    seed_password: str = "dev-only-not-a-secret"
+    # Suppressing S105 here: not a secret. This is the password given to the development
+    # fixture users by app/seed.py, and it is meant to be public - the README
+    # prints it. Real deployments override SEED_PASSWORD, and no production
+    # credential is ever defaulted here (contrast jwt_secret, which has none).
+    seed_password: str = "dev-only-not-a-secret"  # noqa: S105
 
     sql_echo: bool = False
 

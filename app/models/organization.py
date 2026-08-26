@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, created_at_column, uuid_pk
+
+if TYPE_CHECKING:  # avoids a circular import at runtime; SQLAlchemy resolves by name
+    from app.models.user import User
 
 
 class Organization(Base):
@@ -19,4 +23,4 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = created_at_column()
 
-    users: Mapped[list["User"]] = relationship(back_populates="organization")  # noqa: F821
+    users: Mapped[list[User]] = relationship(back_populates="organization")

@@ -14,6 +14,8 @@ The only legal update to an active version is a status transition to
 from __future__ import annotations
 
 from sqlalchemy import event, inspect
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import Mapper
 
 from app.core.enums import VersionStatus
 from app.core.errors import ImmutableVersionError
@@ -25,7 +27,9 @@ LEGAL_TRANSITIONS_FROM_ACTIVE: frozenset[str] = frozenset(
 
 
 @event.listens_for(SkillVersion, "before_update")
-def guard_active_version_immutability(mapper, connection, target: SkillVersion) -> None:  # noqa: ANN001
+def guard_active_version_immutability(
+    mapper: Mapper[SkillVersion], connection: Connection, target: SkillVersion
+) -> None:
     state = inspect(target)
 
     status_history = state.attrs.status.history

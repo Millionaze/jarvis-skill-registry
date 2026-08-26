@@ -89,7 +89,7 @@ class ScopedRepository:
         """
         if not hasattr(instance, "organization_id"):
             raise TypeError(f"{type(instance).__name__} is not a tenant-owned model")
-        instance.organization_id = self._organization_id  # type: ignore[attr-defined]
+        instance.organization_id = self._organization_id
         self._session.add(instance)
         return instance
 
@@ -210,9 +210,9 @@ class UnscopedAuthRepository:
 
 
 __all__ = [
+    "ErrorCode",
+    "ResourceNotFoundError",
     "ScopedRepository",
     "SkillRepository",
     "UnscopedAuthRepository",
-    "ResourceNotFoundError",
-    "ErrorCode",
 ]

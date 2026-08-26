@@ -15,6 +15,8 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.enums import AuditEvent, SkillStatus, VersionStatus
 from app.core.errors import (
     ConflictError,
@@ -23,8 +25,6 @@ from app.core.errors import (
     ResourceNotFoundError,
     UnprocessableError,
 )
-from sqlalchemy.exc import IntegrityError
-
 from app.core.tools import validate_requested_tools
 from app.db.repository import SkillRepository
 from app.models.audit import AuditLog

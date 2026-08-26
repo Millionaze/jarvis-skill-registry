@@ -71,7 +71,9 @@ def migrated_database() -> None:
     env = {**os.environ, "MIGRATION_DATABASE_URL": TEST_MIGRATION_DATABASE_URL}
     for args in (["downgrade", "base"], ["upgrade", "head"]):
         try:
-            subprocess.run(
+            # Suppressing S603 here: no shell, and every argument is a literal defined in
+            # this file - there is no untrusted input in this call.
+            subprocess.run(  # noqa: S603
                 [sys.executable, "-m", "alembic", *args],
                 cwd=ROOT,
                 env=env,

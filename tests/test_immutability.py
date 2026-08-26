@@ -23,7 +23,6 @@ from app.models.skill import SkillVersion
 from tests import flows
 from tests.conftest import OrgFixture
 
-
 # --------------------------------------------------------------------------
 # Layer 1: the API surface
 # --------------------------------------------------------------------------
