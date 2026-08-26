@@ -12,13 +12,13 @@ Approximate hours:
 <FILL IN>
 
 Final commit SHA:
-fd78ee6ad337840f679a0317852a3fb966750db1   (the commit that added this report)
+<the tip of `main`; `git rev-parse origin/main` is authoritative>
 
-  A commit cannot contain its own hash, so this line was written by the single
-  commit that follows it. That commit is the current tip of `main` and changes
-  nothing but these four lines; `git rev-parse origin/main` is authoritative.
-  The complete implementation, tests and documentation were finished at
-  948fb7038054e4b385cc8730618f76fc120409d8, 26 commits in.
+  A commit cannot contain its own hash. The deliverable was complete at
+  948fb7038054e4b385cc8730618f76fc120409d8; a self-audit pass afterwards found
+  and fixed three defects (see "Goal achieved" below), so the tip is later than
+  that. Nothing after 948fb70 changes the architecture - only bug fixes, their
+  regression tests, and the documentation corrections they required.
 
 Goal achieved:
 Yes - complete and verified end to end.
@@ -38,6 +38,32 @@ README.md (17 steps, every one executed against a freshly built stack before
 being written down): authenticate -> create skill draft -> review -> owner
 activates -> retrieve active skill -> exact version recorded in the audit log by
 version number and content hash.
+
+After the build was finished I ran a deliberately adversarial self-audit against
+a stack rebuilt from scratch, trying to fail the work rather than defend it. It
+found three defects, all now fixed with regression tests:
+
+  1. Concurrent POST /skills with the same name returned 500 rather than 409. The
+     pre-check in create_skill was treated as the guarantee; it is only a fast
+     path, and two concurrent requests could both pass it. Data was never at risk
+     - uq_skills_organization_id_name kept it to one row - but the status code was
+     wrong and IntegrityError was unhandled anywhere in the app. Fixed by
+     translating that constraint into the same 409, plus a global IntegrityError
+     handler so no future constraint violation can surface as an internal error.
+  2. TRUNCATE on audit_log succeeded for the schema-owner role, because PostgreSQL
+     does not fire ROW triggers for TRUNCATE. The append-only guarantee was
+     therefore true for UPDATE and DELETE and false for TRUNCATE. Fixed by
+     migration 0003, a statement-level BEFORE TRUNCATE trigger, and the overstated
+     sentence in ARCHITECTURE.md was corrected rather than quietly patched.
+  3. One test (the lifespan smoke test) had no assertion. Given one.
+
+The audit also confirmed by attack what the tests claim: cross-organization read,
+update and activation all return 404 with bodies indistinguishable from a
+nonexistent id; organization_id is rejected in a body and ignored in a query
+parameter or header; all 18 registered routes were enumerated (not just the
+documented ones) and none read across tenants; and audit rows share the same
+Postgres xmin as the state change they describe, which is transaction identity
+rather than an assertion about it.
 
 Architecture decisions:
 Written up with trade-offs in ARCHITECTURE.md. In brief:
@@ -82,10 +108,13 @@ Written up with trade-offs in ARCHITECTURE.md. In brief:
   unscoped-ness is greppable rather than accidental.
 
 Tests passed:
-============================= 144 passed in 24.08s =============================
+============================= 150 passed in 24.62s =============================
 
-100% statement coverage (TOTAL 899 statements, 0 missed). Raw, unedited output of
+100% statement coverage (TOTAL 914 statements, 0 missed). Raw, unedited output of
 `docker compose run --rm api pytest -v --cov` is in TEST_OUTPUT.md.
+
+144 of those came from the build; the last 6 are regression tests for defects the
+self-audit found (below).
 
 All 13 mandatory tests exist and pass:
    1. test_isolation.py::test_same_org_create_then_read_succeeds
@@ -157,7 +186,14 @@ Database constraints and triggers, by name
   reads the index definition out of pg_indexes and then forces a second active
   row and asserts the constraint name in the error.
 * `trg_audit_log_append_only` (function `audit_log_forbid_mutation`) - BEFORE
-  UPDATE OR DELETE on audit_log, always raises. Plus
+  UPDATE OR DELETE on audit_log, always raises.
+* `trg_audit_log_no_truncate` (alembic 0003, same function) - statement-level
+  BEFORE TRUNCATE, because row triggers do not fire on TRUNCATE. Proved on a
+  dedicated schema-owner connection by
+  test_audit.py::test_the_audit_log_cannot_be_truncated_even_by_the_schema_owner,
+  with ::test_the_application_role_cannot_truncate_the_audit_log covering the
+  privilege side and ::test_the_truncate_guard_is_a_statement_level_trigger
+  asserting the trigger's tgtype bits. Plus
   `REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM jarvis_app`. The API connects
   as `jarvis_app`, a non-owning role, precisely so the revocation actually binds -
   a table owner would bypass the privilege check. Proved by
@@ -229,8 +265,11 @@ In the order I would actually do it.
  4. Separation of duties on review: reviewer must not be the version's author.
  5. Cursor pagination and filtering on GET /skills and GET /audit, plus a
     retention and archival policy for audit_log.
- 6. Concurrency tests that exercise the FOR UPDATE lock and the partial unique
-    index under genuine parallel activation, rather than relying on reasoning.
+ 6. Concurrency tests inside the suite. The self-audit exercised parallel
+    activation, parallel version creation and parallel tool grants against a live
+    stack by hand - the FOR UPDATE lock held in every case - but the pytest
+    harness is single-connection by design, so those races are not yet guarded in
+    CI. That needs a second harness that commits rather than rolls back.
  7. Per-tenant, data-driven tool allowlists, themselves versioned and audited, so
     adding a tool is an owner action rather than a deploy.
  8. Rate limiting on login, structured JSON request logging with a correlation id
