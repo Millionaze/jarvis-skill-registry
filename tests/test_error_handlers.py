@@ -13,6 +13,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
 from app.api.errors import register_exception_handlers
+from sqlalchemy.exc import IntegrityError
+
 from app.core.errors import DomainError, ErrorCode, ImmutableVersionError
 from app.db.session import dispose_engine, get_engine, get_session, get_sessionmaker
 
@@ -29,6 +31,16 @@ def failing_app() -> FastAPI:
     @application.get("/boom/immutable")
     async def immutable() -> None:
         raise ImmutableVersionError("Active skill version content is immutable.")
+
+    @application.get("/boom/integrity")
+    async def integrity() -> None:
+        raise IntegrityError(
+            "INSERT INTO skills ...",
+            {"name": "x"},
+            Exception(
+                'duplicate key value violates unique constraint "uq_some_constraint"'
+            ),
+        )
 
     @application.get("/boom/domain")
     async def domain() -> None:
@@ -72,6 +84,26 @@ async def test_the_application_immutability_guard_surfaces_as_409(
     error = response.json()["error"]
     assert error["code"] == ErrorCode.ACTIVE_VERSION_IMMUTABLE
     assert "immutable" in error["message"].lower()
+
+
+async def test_an_unanticipated_constraint_violation_becomes_a_409_not_a_500(
+    failing_client: AsyncClient,
+) -> None:
+    """A constraint firing means the database did its job - that is a conflict.
+
+    Services translate the violations they expect into specific codes; this
+    handler stops one they did not anticipate from surfacing as an opaque 500.
+    """
+    response = await failing_client.get("/boom/integrity")
+
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == ErrorCode.CONSTRAINT_VIOLATION
+
+    # The driver message is logged, never returned.
+    body = response.text.lower()
+    assert "uq_some_constraint" not in body
+    assert "insert into" not in body
 
 
 async def test_a_domain_error_can_override_its_status_and_code(

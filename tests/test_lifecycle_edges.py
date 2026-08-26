@@ -196,3 +196,40 @@ async def test_a_lost_race_on_a_duplicate_skill_name_is_a_409_not_a_500(
     monkeypatch.undo()
     listing = await client.get("/skills", headers=abc.owner_headers)
     assert [row["name"] for row in listing.json()] == ["Contended Name"]
+
+
+async def test_an_unrelated_constraint_violation_is_not_mislabelled_as_a_name_conflict(
+    client: AsyncClient, abc: OrgFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """create_skill only claims SKILL_NAME_CONFLICT for the name constraint.
+
+    Any other IntegrityError is re-raised and handled generically, so a future
+    constraint cannot be silently reported as a duplicate-name error.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app.db.repository import SkillRepository
+
+    async def _raise_a_different_constraint(self) -> None:  # noqa: ANN001
+        raise IntegrityError(
+            "INSERT INTO skills ...",
+            {},
+            Exception('violates foreign key constraint "fk_skills_created_by_users"'),
+        )
+
+    monkeypatch.setattr(SkillRepository, "flush", _raise_a_different_constraint)
+
+    response = await client.post(
+        "/skills",
+        headers=abc.owner_headers,
+        json={
+            "name": "Unrelated Constraint",
+            "department": "operations",
+            "prompt_body": "p",
+            "requested_tools": [],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CONSTRAINT_VIOLATION"
+    assert response.json()["error"]["code"] != "SKILL_NAME_CONFLICT"
