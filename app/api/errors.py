@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.errors import DomainError, ErrorCode, ImmutableVersionError
@@ -47,6 +48,24 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content=_envelope(ErrorCode.ACTIVE_VERSION_IMMUTABLE, str(exc)),
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def _integrity_error(_: Request, exc: IntegrityError) -> JSONResponse:
+        """Safety net: a database constraint did its job, so this is a 409.
+
+        Services translate the violations they expect into specific codes. This
+        handler exists so that one they did not anticipate can never reach the
+        client as an opaque 500 - a uniqueness race is a conflict, not a bug in
+        the server. The driver message is logged, never returned.
+        """
+        logger.warning("integrity error: %s", exc.orig)
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=_envelope(
+                ErrorCode.CONSTRAINT_VIOLATION,
+                "The request conflicts with the current state of the resource.",
+            ),
         )
 
     @app.exception_handler(RequestValidationError)

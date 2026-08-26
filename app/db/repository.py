@@ -99,6 +99,10 @@ class ScopedRepository:
     async def commit(self) -> None:
         await self._session.commit()
 
+    async def rollback(self) -> None:
+        """Return the session to a usable state after a constraint violation."""
+        await self._session.rollback()
+
 
 class SkillRepository(ScopedRepository):
     """Skill-shaped reads that need more than a plain scoped SELECT."""

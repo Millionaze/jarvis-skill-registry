@@ -23,6 +23,8 @@ from app.core.errors import (
     ResourceNotFoundError,
     UnprocessableError,
 )
+from sqlalchemy.exc import IntegrityError
+
 from app.core.tools import validate_requested_tools
 from app.db.repository import SkillRepository
 from app.models.audit import AuditLog
@@ -125,7 +127,22 @@ class SkillService:
                 created_by=self._actor.id,
             )
         )
-        await self._repo.flush()
+
+        # The check above is a fast path that produces a good error message; it is
+        # not the guarantee. Two concurrent creates can both pass it, so the
+        # authority is uq_skills_organization_id_name and we translate its
+        # violation into the same 409 rather than letting it become a 500.
+        try:
+            await self._repo.flush()
+        except IntegrityError as exc:
+            await self._repo.rollback()
+            if "uq_skills_organization_id_name" in str(exc.orig):
+                raise ConflictError(
+                    f"A skill named {payload.name!r} already exists in this organization.",
+                    code=ErrorCode.SKILL_NAME_CONFLICT,
+                    detail={"name": payload.name},
+                ) from exc
+            raise
 
         version = await self._create_version_row(
             skill=skill, version_number=1, prompt_body=payload.prompt_body, tools=tools
