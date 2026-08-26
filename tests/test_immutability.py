@@ -222,8 +222,11 @@ async def test_only_one_active_version_per_skill_is_possible(
         )
     )
     definition = index.scalar_one()
-    assert "UNIQUE" in definition
-    assert "(status = 'active'::text)" in definition or "status = 'active'" in definition
+    assert "CREATE UNIQUE INDEX" in definition
+    assert "(skill_id)" in definition
+    # A *partial* index: it constrains only the active rows.
+    where_clause = definition.split("WHERE", 1)[1]
+    assert "'active'" in where_clause
 
     # Forcing a second active row for the same skill is refused by the database.
     with pytest.raises(DBAPIError) as raised:
