@@ -17,6 +17,16 @@ draft skill  →  version 1 (immutable)  →  reviewed  →  owner activates  �
 **Stack:** FastAPI (async) · Python 3.12 · PostgreSQL 16 · SQLAlchemy 2.0 (asyncpg)
 · Alembic · Pydantic v2 · pytest + httpx.
 
+> **Grading reference — [EVALUATION_MAP.md](EVALUATION_MAP.md)**
+> Every requirement mapped to the exact file, line or test function that proves it.
+>
+> **Fastest verification** — two commands, about a minute:
+> ```bash
+> docker compose up --build -d     # migrates, seeds and serves; zero manual steps
+> ./scripts/demo.sh                # 19 live checks: the full lifecycle + 5 attacks
+> ```
+> `scripts/demo.sh` exits non-zero if any check fails, so the exit code is the verdict.
+
 Design decisions and their trade-offs are in **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 The verbatim test run is in **[TEST_OUTPUT.md](TEST_OUTPUT.md)**.
 
