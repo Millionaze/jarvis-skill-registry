@@ -1,0 +1,54 @@
+# `docker compose up --build` gives a working stack with zero manual steps:
+# the api container migrates, seeds and then serves.
+#
+# Values below are development-only placeholders. Copy .env.example to .env to
+# override them; docker compose loads .env automatically.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: jarvis_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-not-a-secret}
+      POSTGRES_DB: jarvis
+      APP_DB_USER: jarvis_app
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-dev-only-not-a-secret}
+      TEST_DB_NAME: jarvis_test
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis_owner -d jarvis"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: .
+    environment:
+      # The API connects as the restricted app role.
+      DATABASE_URL: postgresql+asyncpg://jarvis_app:${APP_DB_PASSWORD:-dev-only-not-a-secret}@db:5432/jarvis
+      # Alembic connects as the owner role (needs DDL + GRANT).
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://jarvis_owner:${POSTGRES_PASSWORD:-dev-only-not-a-secret}@db:5432/jarvis
+      # The pytest suite runs against a separate database on the same server.
+      TEST_DATABASE_URL: postgresql+asyncpg://jarvis_app:${APP_DB_PASSWORD:-dev-only-not-a-secret}@db:5432/jarvis_test
+      TEST_MIGRATION_DATABASE_URL: postgresql+asyncpg://jarvis_owner:${POSTGRES_PASSWORD:-dev-only-not-a-secret}@db:5432/jarvis_test
+      APP_DB_USER: jarvis_app
+      JWT_SECRET: ${JWT_SECRET:-dev-only-not-a-secret-replace-me}
+      SEED_PASSWORD: ${SEED_PASSWORD:-dev-only-not-a-secret}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_HOST_PORT:-8080}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  pgdata:
