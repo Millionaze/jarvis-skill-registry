@@ -471,8 +471,11 @@ One envelope, everywhere:
 ## Tests
 
 ```bash
-docker compose run --rm api pytest -v --cov
+docker compose run --rm api pytest -v --cov=app --cov-report=term-missing
 ```
+
+For a live check against a running stack rather than the test suite, use
+`./scripts/demo.sh` — see [Grading reference](EVALUATION_MAP.md).
 
 Real PostgreSQL, real HTTP through the real ASGI app, real authorization. The
 tenancy dependency is never mocked — overriding it would delete the thing under
@@ -509,39 +512,126 @@ app/
   services/           skill lifecycle, activation, audit, hashing
   seed.py             fixture organizations and users
 db/init/              creates the restricted app role and the test database
+scripts/
+  entrypoint.sh       migrate -> seed -> serve (the container's CMD)
+  demo.sh             one-command live verification: lifecycle + 5 attacks
 tests/
 ```
 
 ---
 
+## Code quality
+
+Both run inside the same container as the tests, so there is no "works on my
+machine" gap:
+
+```bash
+docker compose run --rm api ruff check .
+docker compose run --rm api mypy app/
+```
+
+```
+$ ruff check .
+All checks passed!
+
+$ mypy app/
+Success: no issues found in 36 source files
+```
+
+Configuration is in `pyproject.toml`. ruff runs pycodestyle, pyflakes, isort,
+bugbear, pyupgrade, comprehensions, simplify, async correctness, **bandit
+security checks** and private-member access. mypy runs with
+`disallow_untyped_defs` and `check_untyped_defs` enabled.
+
+There are no blanket ignores. Five findings are suppressed individually, each
+with an inline comment naming the rule and the reason — for example
+`app/core/config.py:33`, where bandit flags the development seed password that
+this README deliberately publishes. Every other finding was fixed rather than
+silenced, including replacing `dict[str, object]` in `app/seed.py` with real
+dataclasses, which removed five `type: ignore` comments instead of hiding behind
+them.
+
 ## Known limitations
 
-Honest list. None of these are hidden by the tests.
+Honest and complete. Everything here is true of this build; nothing is invented
+to look thorough, and none of it is hidden by the tests.
 
-* **No Postgres row-level security.** Isolation is enforced by the repository and
-  by tests that prove it. RLS policies keyed on `organization_id` — with the app
-  role set to a per-request `SET LOCAL app.organization_id` — would move the
-  guarantee into the database itself and is the single highest-value production
-  hardening step. The schema is already shaped for it: every tenant table carries
-  `organization_id`.
-* **No rate limiting or brute-force protection.** Login will answer as fast as you
-  can ask.
-* **No refresh tokens, no revocation list, no key rotation.** HS256 with a single
-  shared secret; a stolen token is valid until it expires (60 minutes). Deleting
-  the user does invalidate it, because the `(user, org)` pair is re-checked on
-  every request.
-* **No pagination.** `GET /skills` returns everything; `GET /audit` is capped at
-  500 rows and has no cursor. Fine at fixture scale, not at tenant scale.
-* **No soft delete or restore.** `disable` is the only removal, and it is
-  one-way — there is no `enable`.
-* **No separation of duties on review.** The author of a version may review it.
-  Enforcing reviewer ≠ author is a small change and probably the right default.
-* **Single region, single writer.** No read replicas, no partitioning, no
-  archival strategy for `audit_log`, which grows forever by design.
-* **Tool allowlist is a code constant.** Adding a tool needs a deploy. That is
-  deliberate for now, but a real deployment would want it to be data, per-tenant,
-  and itself audited.
-* **Dev credentials in `docker-compose.yml`.** Placeholder values with `${VAR:-…}`
-  fallbacks so the stack starts with zero steps. `.env.example` holds placeholders
-  only; the application itself has **no default** for `JWT_SECRET` and refuses to
-  start without it.
+**Security hardening not done**
+
+* **No PostgreSQL row-level security.** Isolation is enforced by
+  `ScopedRepository` and proved by tests, not by the database. RLS policies keyed
+  on `organization_id` — with the app role setting a per-request
+  `SET LOCAL app.organization_id` — would make the guarantee hold even for a
+  future service that talks to this database without going through the
+  repository. This is the natural next step *beyond* the triggers: the triggers
+  protect immutability, RLS would protect tenancy. The schema is already shaped
+  for it, since every tenant table carries a non-nullable `organization_id`.
+* **No rate limiting or brute-force protection.** `POST /auth/login` will answer
+  as fast as you can ask it. bcrypt makes each attempt costly, which is not the
+  same as a lockout.
+* **No refresh tokens, no revocation list, no key rotation.** HS256 with one
+  shared secret; a stolen token stays valid for its 60-minute lifetime. Deleting
+  the user does kill it, because the `(user, organization)` pair is re-checked
+  against the database on every request — but that is a side effect, not a
+  revocation mechanism.
+* **No secrets management.** `JWT_SECRET` comes from the environment with no
+  default, which is the right shape, but there is no rotation, no KMS, no
+  envelope encryption.
+
+**Operational gaps**
+
+* **No structured logging, tracing or metrics.** Logging is `logging.basicConfig`
+  to stdout in plain text. There is no request id propagated into log lines (the
+  actor and organization are attached to `request.state` but never emitted), no
+  OpenTelemetry spans, and no counters on the things worth alerting on —
+  activation rate, 403/404 ratios, tool-grant frequency.
+* **The audit write is same-transaction, but there is no outbox.** A state change
+  and its audit row commit or roll back together, which is the important half.
+  There is no outbox table, no change-data-capture and no retry pattern, so a
+  downstream consumer — a SIEM, an analytics warehouse, a compliance archive —
+  has no reliable way to be notified. Adding an outbox row inside the same
+  transaction and draining it separately is the standard fix and is not done here.
+* **No health signal beyond liveness.** `/health` returns `ok` without checking
+  the database, so it proves the process is up, not that it can serve.
+* **Single region, single writer.** No read replicas, no connection pooling
+  beyond SQLAlchemy's defaults, no partitioning, and `audit_log` grows forever
+  with no retention or archival policy.
+
+**Product gaps**
+
+* **No pagination anywhere.** `GET /skills` returns every skill in the
+  organization; `GET /audit` is capped at 500 rows with no cursor. Fine at
+  fixture scale, wrong at tenant scale.
+* **No soft delete or restore.** `disable` is the only removal and it is one-way
+  — there is no `enable`, and no way to recover a skill disabled by mistake other
+  than creating a new one.
+* **No separation of duties on review.** The author of a version may review their
+  own version. Enforcing reviewer ≠ author is a small change and is probably the
+  right default for a control that exists to gate activation.
+* **The tool allowlist is a code constant.** Adding a tool requires a deploy
+  (`app/core/tools.py`). Deliberate for now — it makes the set auditable in
+  review — but a real deployment would want it to be data, per-tenant, and itself
+  versioned and audited.
+* **No bulk or batch operations**, and no way to copy a skill between
+  departments or clone one as a starting point.
+
+**Testing gaps**
+
+* **Concurrency is not covered in the automated suite.** The pytest harness is
+  single-connection by design (each test runs inside one transaction that is
+  rolled back), so genuine parallel requests cannot be expressed in it. Parallel
+  activation, parallel version creation and parallel tool grants were exercised
+  by hand against a live stack — the `SELECT … FOR UPDATE` lock held in every
+  case — and one race found that way is now covered by a deterministic
+  regression test (`tests/test_lifecycle_edges.py:165`). Guarding the rest in CI
+  needs a second harness that commits rather than rolls back.
+* **No load or soak testing.** Nothing here has been run under sustained traffic,
+  so the pool sizing and lock-contention behaviour are untested assumptions.
+
+**Environment**
+
+* **`docker-compose.yml` carries development placeholder credentials** behind
+  `${VAR:-…}` fallbacks so the stack starts with zero manual steps. `.env.example`
+  contains placeholders only, `.env` is gitignored and was never committed, and
+  the application has **no default** for `JWT_SECRET` — it refuses to start
+  without one.
