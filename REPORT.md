@@ -12,12 +12,13 @@ Approximate hours:
 <FILL IN>
 
 Final commit SHA:
-948fb7038054e4b385cc8730618f76fc120409d8
+fd78ee6ad337840f679a0317852a3fb966750db1   (the commit that added this report)
 
-  This is the tip of `main` containing the complete implementation, tests and
-  documentation. The only commit after it is the one adding this report, whose
-  SHA is printed at the end of the build transcript and shown by `git rev-parse
-  HEAD`. 26 commits precede this report.
+  A commit cannot contain its own hash, so this line was written by the single
+  commit that follows it. That commit is the current tip of `main` and changes
+  nothing but these four lines; `git rev-parse origin/main` is authoritative.
+  The complete implementation, tests and documentation were finished at
+  948fb7038054e4b385cc8730618f76fc120409d8, 26 commits in.
 
 Goal achieved:
 Yes - complete and verified end to end.
