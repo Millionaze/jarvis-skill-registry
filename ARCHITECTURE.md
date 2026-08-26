@@ -139,6 +139,21 @@ schema — a table owner would bypass the privilege check entirely, leaving only
 the trigger. Both are in place, so tampering fails on privileges for the app and
 on the trigger for everyone else, including the owner.
 
+That claim was initially half true, and the gap is worth recording because it is
+the kind that hides behind a passing test suite. `TRUNCATE` does not fire *row*
+triggers, so `trg_audit_log_append_only` never saw it. The application role could
+never truncate — the privilege is revoked — but the schema owner could empty the
+table in one statement. Migration `0003` adds `trg_audit_log_no_truncate`, a
+statement-level `BEFORE TRUNCATE` trigger, so the guarantee now holds for every
+role and every verb. Both the row-level and statement-level cases are tested
+(`test_audit.py::test_the_application_role_cannot_truncate_the_audit_log` and
+`::test_the_audit_log_cannot_be_truncated_even_by_the_schema_owner`, the latter
+on a dedicated owner connection).
+
+The general lesson, which is why it is written down rather than quietly patched:
+a database-level guarantee is only as broad as the trigger events it subscribes
+to. "The trigger covers it" is not the same claim as "the table cannot change".
+
 **Trade-off.** Three implementations of one rule is duplication, and the DB layer
 is invisible in the Python source. It is also the only layer that would have
 stopped an incident. `tests/test_immutability.py` tests each layer separately,

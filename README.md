@@ -33,7 +33,7 @@ The verbatim test run is in **[TEST_OUTPUT.md](TEST_OUTPUT.md)**.
 | At most one active version per skill | Partial unique index `uq_skill_versions_one_active_per_skill`. |
 | Nothing activates itself | Activation requires `role = 'owner'` in the owning org **and** a prior review. It is idempotent. |
 | Requesting a tool never grants it | `tool_grants.granted` defaults to `false`; granting is a separate owner-only action. Runtime sees granted tools only. |
-| The audit log only grows | `BEFORE UPDATE OR DELETE` trigger, plus `UPDATE`/`DELETE`/`TRUNCATE` revoked from the application role. |
+| The audit log only grows | Row-level `BEFORE UPDATE OR DELETE` trigger **and** a statement-level `BEFORE TRUNCATE` trigger (row triggers do not fire on `TRUNCATE`), plus `UPDATE`/`DELETE`/`TRUNCATE` revoked from the application role. |
 
 ---
 
